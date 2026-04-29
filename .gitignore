@@ -1,0 +1,12 @@
+# Masking the Data and Results
+data/*
+results/*
+
+# tmp folders
+tmp/*
+.tmp/* 
+
+# snakemake shit
+.snakemake
+
+
