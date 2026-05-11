@@ -1,0 +1,19 @@
+name: CHG-Preprocess
+channels:
+  - conda-forge
+  - default
+  - bioconda
+  - r
+dependencies:
+  - samtools
+  - gatk4
+  - r-base
+  - r-ggplot2
+  - bcftools
+  - htslib
+  - varscan
+  - picard
+  - bwa
+  - r-reshape2
+  - r-gplots
+  - r-gsalib

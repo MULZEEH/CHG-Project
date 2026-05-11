@@ -1,0 +1,20 @@
+name:CHG-base
+channels:
+  - conda-forge
+  - defaults
+  - bioconda
+  - r
+dependencies:
+  - python=3.12
+  - numpy
+  - graphviz
+  - tkinterdnd2
+  - pandas
+  - polar
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - jupyterlab
+  - biopython
+  - snakemake
+  - pip
