@@ -1,6 +1,7 @@
 # Masking the Data and Results
 data/*
 results/*
+annotations/*
 
 # tmp folders
 tmp/*
