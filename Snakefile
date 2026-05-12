@@ -56,6 +56,10 @@
 # &>file.txt
 
 #============= PATHVAR =============
+# pathvars:
+#     data="data",
+#     results="results"
+
 # rule mytask:
 #     input:
 #         "<resources>/{dataset}.txt"
@@ -187,6 +191,7 @@ config: "config.yaml"
 KEEP_JUNK = config.get("keep_junk", False)
 ANNOTATION_FOLDER = config.get("annotation_folder", "annotations/")
 FULL_FASTA = config.get("full_fasta", "human_g1k_v37.fasta")
+STARTING_DATA = config.get("bam_path", "data/")
 
 # On error behavior
 onsuccess:
@@ -303,7 +308,7 @@ rule BaseQualityScoreRecalibration:
     conda:
         "envs/general.yml"
     input: 
-        input_bam="data/{group}.sorted.bam",
+        input_bam=STARTING_DATA+"{group}.sorted.bam",
         ref=ANNOTATION_FOLDER + FULL_FASTA,
         known_sites=ANNOTATION_FOLDER + "hapmap_3.3.b37.vcf", #this can be standardized 
         intervals=ANNOTATION_FOLDER + "CancerGenesSel.bed"
@@ -313,11 +318,16 @@ rule BaseQualityScoreRecalibration:
         "scripts/BQSR.sh -r {input.ref} -i {input.input_bam} -o {output.output_bam} -k {input.known_sites} -l {input.intervals} "
         # I also need a better way to visualize the results
 
-
+# output: 
+#         output_vcf=report("results/{group}.vcf", category="Variants"),
+#         bamout="results/{group}.bamout"
+# Considering of using 
 rule RemoveDuplicates:
+    conda:
+        "envs/general.yml"
+    threads: 16
     input: 
         input bam=,
-
     output: 
         output_bam=,
         metrics=,
@@ -325,14 +335,58 @@ rule RemoveDuplicates:
     echo "Dedup step"
     gatk MarkDuplicates \
         -I {input.input_bam} \
-        -O {output.ouptut} \
-        -M {output.metrics}
+        -O {output.output_bam} \
+        -M {output.metrics} \
+        -ASO=true
+    samtools index {output.output_bam}
+    samtools flagstat {output.output_bam} > {output.metrics}
+
+    gatk MarkDuplicates \
+        -I {input.input_bam} \
+        -O {output.output_bam} \
+        -M {output.metrics} \
+        --REMOVING-DUPLICATES true \
+        -AS
+
+    gatk MarkDuplicatesSpark \
+        -I data/control.sorted.bam \
+        -O miaoless.bam \
+        -M sus.txt \
+        --remove-all-duplicates true \
+        --spark-master local[*]
+
     """
 
-# rule VariantCalling:
-#     input: 
-#     output: 
-#     run: 
+rule CopyNumberVariation:
+    input: 
+    output: 
+    run: """"
+    samtools mpileup -q 1 -f {input.ref} {input.input_bam} | \
+        varscan copynumber --mpileup 1 --output-file {output.copynumber} --output-file-prefix {wildcards.group}
+    
+    varscan copyCaller {output.copynumber} --output-file {output.copycaller} --output-file-prefix {wildcards.group}
+    
+    Rscript scripts/plot_cnv.R {output.copycaller} {output.plot}
+    """
+
+rule VariantCalling:
+    conda:
+        "envs/general.yml"
+    threads: 16
+    input: 
+        input_bam="{RemoveDuplicates.output.output_bam}",
+        ref=
+    output: 
+        output_vcf="results/{group}.vcf",
+        bamout="results/{group}.bamout"
+    run: """
+    gatk HaplotypeCaller  \
+        -R {input.ref} \
+        -I {input.input_bam} \
+        -O {output.output_vcf} \
+        -bamout {output.bamout}
+    echo "perfroming quality again"
+   """
 
 # rule SPIA:
 #     input: 
