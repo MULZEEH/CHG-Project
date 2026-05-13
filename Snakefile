@@ -174,6 +174,33 @@
 #                       category="Variant Analysis")
 #     shell:
 #         "python scripts/my_plotter.py {input} {output.plot}"
+# rule generate_plot:
+#     input:
+#         "data/results.txt"
+#     output:
+#         # Tagged for the report
+#         fig = report("plots/summary_plot.png", 
+#                      caption="report/plot_desc.rst", 
+#                      category="Visualizations")
+#     shell:
+#         "python scripts/make_plot.py {input} {output.fig}"
+
+# rule generate_table:
+#     input:
+#         "data/results.txt"
+#     output:
+#         # Tagged for the report - CSVs become interactive tables!
+#         tbl = report("tables/metrics.csv", 
+#                      caption="report/table_desc.rst", 
+#                      category="Data Tables")
+#     shell:
+#         "python scripts/make_table.py {input} {output.tbl}"
+
+# rule all:
+#     input:
+#         "plots/summary_plot.png",
+#         "tables/metrics.csv"
+
 
 # Snakefile
 # usage: snakemake -c 1 --use-conda --report report.html
@@ -186,12 +213,17 @@ import pandas as pd
 # import igv_notebook
 from glob import glob
 
+from scripts.queries import get_somatic_query
+
 config: "config.yaml"
 # GLOBAL VARIABLES
 KEEP_JUNK = config.get("keep_junk", False)
 ANNOTATION_FOLDER = config.get("annotation_folder", "annotations/")
 FULL_FASTA = config.get("full_fasta", "human_g1k_v37.fasta")
 STARTING_DATA = config.get("bam_path", "data/")
+JAVA_MEMORY = config.get("java_memory", 8)
+SNP_REF_DB = config.get("snp_ref_db","hg19kg")
+# INPUT_FILE = config.get("input_bam", "data/tumor.bam")
 
 # On error behavior
 onsuccess:
@@ -222,6 +254,7 @@ rule all:
         expand("data/{group}.sorted.bam", group=GROUPS),
         expand("data/{group}.sorted.bai", group=GROUPS),
         # expand("{group}.intervals", group=GROUPS),
+        # [list of things in the report]
         expand("data/{group}.sorted.recalibrated.bam", group=GROUPS)
         # ["results/*.svg", ""]
 
@@ -347,14 +380,6 @@ rule RemoveDuplicates:
         -M {output.metrics} \
         --REMOVING-DUPLICATES true \
         -AS
-
-    gatk MarkDuplicatesSpark \
-        -I data/control.sorted.bam \
-        -O miaoless.bam \
-        -M sus.txt \
-        --remove-all-duplicates true \
-        --spark-master local[*]
-
     """
 
 rule CopyNumberVariation:
@@ -378,7 +403,7 @@ rule VariantCalling:
         ref=
     output: 
         output_vcf="results/{group}.vcf",
-        bamout="results/{group}.bamout"
+        bamout="results/{group}.bamout" # diventa nuovo main bam
     run: """
     gatk HaplotypeCaller  \
         -R {input.ref} \
@@ -387,6 +412,43 @@ rule VariantCalling:
         -bamout {output.bamout}
     echo "perfroming quality again"
    """
+
+rule VariantAnnotation:
+    input: 
+    output: 
+        reportino = report(
+            report.html,...
+        )
+        annotate =,
+        filtered = 
+    run:
+
+# Rule that handles 
+rule VariantPrediction:
+    input: 
+    output: 
+    run: 
+
+# might incorporate this with the above
+rule IGVPredictionVisualization:
+    input: 
+    output: 
+    run: 
+# for this rule for the annotation and filtering part i was thinking of using a file with the possible query or idk how
+rule SomaticVariantCalling:
+    input:
+        
+    output:
+    resources:
+        mem_gb=JAVA_MEMORY
+    params:
+        database=SNP_REF_DB,
+
+    run:"""
+     snpEff -Xmx{resources.mem_gb}g -v {params.database} {input} -s {output.reportino} > {output.output}
+     SnpSift -Xmx{resources.mem_gb}g Annotate 
+     """
+    
 
 # rule SPIA:
 #     input: 

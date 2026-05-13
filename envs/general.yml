@@ -16,3 +16,8 @@ dependencies:
   - r-reshape2
   - r-gplots
   - r-gsalib
+  - vcftools
+  - SnpSift
+  - snpEff
+  - pip:
+    - alphagenome
