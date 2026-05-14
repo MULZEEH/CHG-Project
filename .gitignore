@@ -9,6 +9,6 @@ tmp/*
 
 # snakemake shit
 .snakemake
-
+.env
 
 SECRET.yml

@@ -1,10 +1,13 @@
 from alphagenome.data import genome
 from alphagenome.models import dna_client
 from alphagenome.visualization import plot_components
+import matplotlib as plt
+import os
+from dotenv import load_dotenv
 import pandas as pd
 
 # 1. Setup your credentials
-API_KEY = "YOUR_API_KEY_HERE"
+API_KEY = 
 client = dna_client.create(API_KEY)
 
 def score_my_variant(chrom, pos, ref, alt, genome_build='hg19'):
