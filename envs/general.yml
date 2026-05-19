@@ -19,5 +19,7 @@ dependencies:
   - vcftools
   - SnpSift
   - snpEff
+  # - python-polar
+  - dotenv
   - pip:
     - alphagenome

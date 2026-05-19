@@ -1,0 +1,14 @@
+
+#=== AlphaGenome @param settings ===
+ag_rna_seq: True  # @param { type: "boolean"}
+ag_cage: True  # @param { type: "boolean" }
+ag_procap: True  # @param { type: "boolean" }
+ag_atac: True  # @param { type: "boolean" }
+ag_dnase: True  # @param { type: "boolean" }
+ag_chip_histone: True  # @param { type: "boolean" }
+ag_chip_tf: True  # @param { type: "boolean" }
+ag_polyadenylation: True  # @param { type: "boolean" }
+ag_splice_sites: True  # @param { type: "boolean" }
+ag_splice_site_usage: True  # @param { type: "boolean" }
+ag_splice_junctions: True  # @param { type: "boolean" }
+ag_download_predictions: False  # @param { type: "boolean" }
