@@ -223,6 +223,10 @@ FULL_FASTA = config.get("full_fasta", "human_g1k_v37.fasta")
 STARTING_DATA = config.get("bam_path", "data/")
 JAVA_MEMORY = config.get("java_memory", 8)
 SNP_REF_DB = config.get("snp_ref_db","hg19kg")
+
+# No idea how to implement this without random errors, but idea is to ask the user/config 
+# file the various path to the vcf of the convalidated snp/snv of clinical knowledge
+# TESTING_VCF_LIBRARY = config.get("vcf_library", list())
 # INPUT_FILE = config.get("input_bam", "data/tumor.bam")
 
 # On error behavior
@@ -287,8 +291,24 @@ rule indexing:
     wrapper:
         "0.2.0/bio/samtools/index" 
 
-#  gatk IndexFeatureFile -I annotations/*.vcf
 
+# no idea in what execution i should use this
+rule SPIA_check:
+    input: 
+        control="data/control.sorted.bam"
+        tumor="data/tumor.sorted.bam"
+    output: 
+        test_result=report(
+            "results/control/deossi.pdf", 
+            caption="report/table_desc.rst", 
+            category="Plot"
+        )
+    run: 
+        """
+        echo'Run of the SPIA script getting the quality of the SNP matching between the tumor and the contorl samples: if the distance is less then x caption will be OK, if intermediate value is likely to be a 1st degree relative, otherwise is NONO'
+        """
+
+#  gatk IndexFeatureFile -I annotations/*.vcf
 def get_gatk_jar():
     return glob("tools/gatk/*.jar")[0]
 # This will not be used since HaplotypeCaller of GATK4 already handles local de noveo assembly for indel realigniment
@@ -413,15 +433,22 @@ rule VariantCalling:
     echo "perfroming quality again"
    """
 
-rule VariantAnnotation:
+#simple function that fiven the name of the input(contorl/tumor) reutnr the filename of the pileup (.bam -> .pileup)
+def getname(wildcard):
+    todo()  
+      
+rule SomaticVariantCall:
     input: 
     output: 
-        reportino = report(
-            report.html,...
-        )
-        annotate =,
-        filtered = 
+        control=tmp(PATH)
+        tumor=tmp(PATH)
     run:
+        """
+        samtools mpileup -q 1 -f {input.ref} {input.control} > {output.control}
+        samtools mpileup -q 1 -f {input.ref} {input.tumor} > {output.tumor}
+        
+        varscan -Xmx{resources.mem_gb}g somatic {output.control} {output.tumor} --output-snp somatic.pm --output-indel somatic.indel --ouput-vcf 1
+        """
 
 # Rule that handles 
 rule VariantPrediction:
@@ -434,8 +461,9 @@ rule IGVPredictionVisualization:
     input: 
     output: 
     run: 
+
 # for this rule for the annotation and filtering part i was thinking of using a file with the possible query or idk how
-rule SomaticVariantCalling:
+rule VariantAnnotation:
     input:
         
     output:
@@ -450,7 +478,17 @@ rule SomaticVariantCalling:
      """
     
 
-# rule SPIA:
+# rule PathwayAnalysis: -> would be cool to start from the vcf and get some pathway expression or idk maybe alphegenome already does that
 #     input: 
 #     output: 
-#     run: 
+#     run:
+
+# rule GenePrediction: ???? wtf was this
+#     input: 
+#     output: 
+#     run:
+
+rule name:
+    input: 
+    output: 
+    run: 

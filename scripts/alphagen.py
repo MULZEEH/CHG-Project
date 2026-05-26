@@ -36,7 +36,11 @@ gtf_transcript = gene_annotation.filter_to_mane_select_transcript(
 transcript_extractor = transcript_utils.TranscriptExtractor(
     gtf_transcript
 )
+print(f"Loaded {len(gtf_transcript)} MANE select transcripts from GENCODE.")   
 
+print(gtf_transcript.head())
+print(head(gtf_transcript))
+exit(1)
 #====================================================================
 #================================= Load VCF file ====================
 #====================================================================
@@ -186,7 +190,7 @@ HG38_SIZES = {
 }
 
 # can take the whole VCF file as input:
-# idea is to 
+# No idea how to plot all that 
 
 # not usefull for an exploration analysis but for a more systematic one, we might want to implement a function that takes as input a list of variants and outputs a dataframe with the scores for each variant and modality, which we can then filter based on the quantiles to identify significant hits.
 
