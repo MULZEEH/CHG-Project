@@ -1,0 +1,5 @@
+# General workflow in Notebook version
+probably syntax is wrong but will fix later
+'''{r}'''
+
+'''{python}'''
