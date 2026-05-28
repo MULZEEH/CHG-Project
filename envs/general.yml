@@ -7,6 +7,7 @@ dependencies:
   - samtools
   - gatk4
   - r-base
+  - r-essentials
   - r-ggplot2
   - bcftools
   - htslib
@@ -20,7 +21,7 @@ dependencies:
   - SnpSift
   - snpEff
   # - python-polar
-
+  - snakemake
   - pip:
     - alphagenome
     - dotenv

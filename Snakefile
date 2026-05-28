@@ -391,6 +391,7 @@ rule RemoveDuplicates:
         -O {output.output_bam} \
         -M {output.metrics} \
         -ASO=true
+
     samtools index {output.output_bam}
     samtools flagstat {output.output_bam} > {output.metrics}
 
@@ -413,6 +414,12 @@ rule CopyNumberVariation:
     
     Rscript scripts/plot_cnv.R {output.copycaller} {output.plot}
     """
+    
+rule AncestryAnalysis:
+    input: 
+    output: 
+    run: """
+    echo "Performing Ancestry Analisys using EthSEQ"""
 
 rule VariantCalling:
     conda:
@@ -436,7 +443,7 @@ rule VariantCalling:
 #simple function that fiven the name of the input(contorl/tumor) reutnr the filename of the pileup (.bam -> .pileup)
 def getname(wildcard):
     todo()  
-      
+
 rule SomaticVariantCall:
     input: 
     output: 
@@ -450,22 +457,31 @@ rule SomaticVariantCall:
         varscan -Xmx{resources.mem_gb}g somatic {output.control} {output.tumor} --output-snp somatic.pm --output-indel somatic.indel --ouput-vcf 1
         """
 
-# Rule that handles 
+# Rule that handles the Alpha Genome run
 rule VariantPrediction:
     input: 
+        vcf="results/intermediate.vcf" # change name 
     output: 
-    run: 
+        report=report("results/variant_prediction_report.html", category="Variant Prediction with AlphaGenome"),
+    script:
+        "scripts/variant_prediction.py {input} {output}"
 
 # might incorporate this with the above
 rule IGVPredictionVisualization:
     input: 
     output: 
-    run: 
+    script:
+        "script/igv_visualization.py {input} {output}"
+
+def get_annotation_db(wildcard):
+    # this is a function that given the name of the input vcf, return the correct annotation database for snpeff
+    # for example if the input is hg19.vcf it will return hg19kg, if the input is hg38.vcf it will return hg38kg, etc
+    # in addition it should merge the various annotation database with the custom chosen by the user (if chosen)
+    todo()
 
 # for this rule for the annotation and filtering part i was thinking of using a file with the possible query or idk how
 rule VariantAnnotation:
     input:
-        
     output:
     resources:
         mem_gb=JAVA_MEMORY
@@ -478,17 +494,24 @@ rule VariantAnnotation:
      """
     
 
-# rule PathwayAnalysis: -> would be cool to start from the vcf and get some pathway expression or idk maybe alphegenome already does that
-#     input: 
-#     output: 
-#     run:
-
-# rule GenePrediction: ???? wtf was this
-#     input: 
-#     output: 
-#     run:
-
-rule name:
+# 
+rule PurityPloidy:
     input: 
+        control="bcf.vcf"
     output: 
     run: 
+        """
+        echo "Filtering the control VCF file for biallelic SNPs"
+        bcftools view \
+            -v snps \
+            -m2 -M2 {input.control} > {output.control}
+        echo "Extracting heterozygous SNPs from the biallelic SNPs VCF file"
+        grep -E "(^#|0/1)" \
+            control.BCF.biallelic_snps.vcf > control.het.biallelic_snps.vcf
+        echo "Counting the allelic reads in the control and tumor samples"
+        java -jar ../tools/genome_analysis_TK.jar -T ASEReadCounter -R ../annotations/human_g1k_v37.fasta -o control.csv -I control.sorted.realigned.recalibrated.dedup.bam -sites control.het.biallelic_snps.vcf -U ALLOW_N_CIGAR_READS -minDepth 20 --minMappingQuality 20 --minBaseQuality 20
+        echo "Counting the allelic reads in the tumor sample"
+        java -jar ../tools/genome_analysis_TK.jar -T ASEReadCounter -R ../annotations/human_g1k_v37.fasta -o tumor.csv -I tumor.sorted.realigned.recalibrated.dedup.bam -sites control.het.biallelic_snps.vcf -U ALLOW_N_CIGAR_READS -minDepth 20 --minMappingQuality 20 --minBaseQuality 20
+        echo "Generating the somatic.pm and somatic.indel files without the .vcf extension for TPES"
+        java -jar ../tools/var_scan.v2.3.9.jar somatic control.sorted.realigned.recalibrated.dedup.pileup tumor.sorted.realigned.recalibrated.dedup.pileup --output-snp somatic.pm --output-indel somatic.indel
+        """

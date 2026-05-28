@@ -12,3 +12,10 @@ ag_splice_sites: True  # @param { type: "boolean" }
 ag_splice_site_usage: True  # @param { type: "boolean" }
 ag_splice_junctions: True  # @param { type: "boolean" }
 ag_download_predictions: False  # @param { type: "boolean" }
+
+
+pathvars:
+  data="data",
+  results="results",
+  resources="resources",
+  anno="annotations"

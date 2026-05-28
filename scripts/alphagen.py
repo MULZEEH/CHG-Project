@@ -12,7 +12,6 @@ import plotnine as gg
 
 from tqdm import tqdm
 
-
 import os
 from dotenv import load_dotenv
 import pandas as pd

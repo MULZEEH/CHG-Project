@@ -45,6 +45,3 @@ def close_gene_name(chromosome: str, position: int, gtf_file: str) -> tuple[str,
     gene_name_upstream = gtf[(gtf['CHROM'] == chromosome) & (gtf['END']+INTORNO_SIZE >= position) & (gtf['FEATURE'] == 'gene')]['ATTRIBUTES'].str.extract('gene_name "([^"]+)"')[0]
     gene_name_downstream = gtf[(gtf['CHROM'] == chromosome) & (gtf['START'] > INTORNO_SIZE) (gtf['START']-INTORNO_SIZE <= position) & (gtf['FEATURE'] == 'gene')]['ATTRIBUTES'].str.extract('gene_name "([^"]+)"')[0]
     
-
-def test():
-    
