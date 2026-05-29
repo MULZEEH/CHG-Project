@@ -127,5 +127,39 @@ max depth parameter to avoid wasting too much space and time during the analysis
 If you have any question, write to yari.ciani@unitn.it
 Have Fun!
 
+# MANAGMENT FOR US
 
+### initial idea + working splits:
+plots: 
+- Log2/beta (SARAS)
+- some track maybe/possibly (lets see)
+- barplot varianti (or table) (Riccardo)
+- Big figure with Tumor info (sigProfiler + Log2/beta maybe + cBioPortal with pathways/"coexpression of mutation variability"+ idk)
 
+table:
+- variants: Informative Table of somatic events: Create a clear, well-organized table summarizing the identified somatic events. Include relevant details such as gene name, variant type, predicted impact, and any annotation information. ->
+In this it would be interesting to see how each of this event is present in each of the chrosomosome we are studying. (at least we will end up with more rows)
+- 
+
+text:
+Spia (Mar)
+EthSEQ (Ricc)
+sigProfiler (Filippo)
+cBioPortal (PIPUS)
+AlphaGenome (Sara (+Marcol))
+
+# work managing:
+- possibly test ur script before pushing in git
+- possibly lets use the notebook.Rmd file with chunks
+- the initial pipeline (up to vcf (and annotation), somatic variant calling and segmentation file) on a different file (possibly Snakefile ) -> the rest on notebook.Rmd
+- Ask before touching the chunk of someone
+- Let's use the MarkDown Capability to describe what the chunk does (and what step of the "snkaefile pipeline" needs)
+- try avoid HardCoding shit or sharing private keys to the workd
+
+THANKS AND ENJOY GUYS :)
+
+# note:
+
+Clinvar found nothing but this:
+
+[BRCA1](https://www.ncbi.nlm.nih.gov/clinvar/variation/54108/?term=54108%5BVariation+ID%5D)

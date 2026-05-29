@@ -6,11 +6,11 @@
 
 
 REFERENCE="annotations/human_g1k_v37.fasta"
-INPUT_BAM="data/Sample.sorted.bam"
+INPUT_BAM="data/Control.sorted.bam"
 KNOWN_SITES="annotations/hapmap_3.3.b37.vcf"
-INTERVALS="annotations/CancerGenesSel.bed"
-OUTPUT_BAM="data/Sample.sorted.recalibrated.bam"
-REPORT="results/recalibration_report.pdf"
+INTERVALS="data/Captured_Regions.bed"
+OUTPUT_BAM="data/Control.sorted.recalibrated.bam"
+REPORT="results/BQSR_report_t.pdf"
 
 # Same but with input parameters
 
@@ -101,35 +101,14 @@ gatk BaseRecalibrator \
     -O .tmp/recal.table\
     -L $INTERVALS 
 
-#========== OLDER VERSION =============
-# java -jar ../../Tools/GenomeAnalysisTK.jar 
-#     -T PrintReads 
-#     -R ../../Annotations/human_g1k_v37.fasta 
-#     -I ../../02_Realignment/Data/Sample.sorted.realigned.bam 
-#     -BQSR recal.table 
-#     -o Sample.sorted.realigned.recalibrated.bam 
-#     -L ../../Annotations/CancerGenesSel.bed 
-#     --emit_original_quals
-
 echo "Step 2: Apply BQSR recalibration..."
 gatk ApplyBQSR \
     -R $REFERENCE \
     -I $INPUT_BAM \
     -bqsr .tmp/recal.table \
     --emit-original-quals true \
-    -O $OUTPUT_BAM 
-    # -L $INTERVALS 
-
-
-#========== OLDER VERSION =============
-# java -jar ../../Tools/GenomeAnalysisTK.jar
-#      -T BaseRecalibrator 
-#      -R ../../Annotations/human_g1k_v37.fasta
-#      -I ../../02_Realignment/Data/Sample.sorted.realigned.bam 
-#      -knownSites ../../Annotations/hapmap_3.3.b37.vcf 
-#      -BQSR recal.table 
-#      -o after_recal.table 
-#      -L ../../Annotations/CancerGenesSel.bed
+    -O $OUTPUT_BAM \
+    -L $INTERVALS 
 
 echo "Step 3: Generate second recalibration table for validation..."
 gatk BaseRecalibrator \
@@ -137,7 +116,7 @@ gatk BaseRecalibrator \
     -I $INPUT_BAM \
     --known-sites $KNOWN_SITES \
     -O .tmp/after_recal.table \
-    # -L $INTERVALS
+    -L $INTERVALS
 
 
 echo "Step 4: Create recalibration plots..."

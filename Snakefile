@@ -292,70 +292,6 @@ rule indexing:
         "0.2.0/bio/samtools/index" 
 
 
-# no idea in what execution i should use this
-rule SPIA_check:
-    input: 
-        control="data/control.sorted.bam"
-        tumor="data/tumor.sorted.bam"
-    output: 
-        test_result=report(
-            "results/control/deossi.pdf", 
-            caption="report/table_desc.rst", 
-            category="Plot"
-        )
-    run: 
-        """
-        echo'Run of the SPIA script getting the quality of the SNP matching between the tumor and the contorl samples: if the distance is less then x caption will be OK, if intermediate value is likely to be a 1st degree relative, otherwise is NONO'
-        """
-
-#  gatk IndexFeatureFile -I annotations/*.vcf
-def get_gatk_jar():
-    return glob("tools/gatk/*.jar")[0]
-# This will not be used since HaplotypeCaller of GATK4 already handles local de noveo assembly for indel realigniment
-rule realignertargetcreator:
-    input:
-        bam="{sample}.sorted.bam",
-        bai="{sample}.sorted.bai",
-        ref=ANNOTATION_FOLDER + FULL_FASTA,
-        fai=ANNOTATION_FOLDER + FULL_FASTA + ".fai",
-        # dict="genome.dict",
-        # known="dbsnp.vcf.gz",
-        # known_idx="dbsnp.vcf.gz.tbi",
-    output:
-        intervals="{sample}.intervals",
-    log:
-        "logs/gatk/realignertargetcreator/{sample}.log",
-    params:
-        extra="--defaultBaseQualities 20 --filter_reads_with_N_cigar",  # optional
-    resources:
-        mem_mb=1024,
-    threads: 16
-    wrapper:
-        "master/bio/gatk3/realignertargetcreator"
-
-rule Realignment_Maybe:
-    input:
-        bam="{sample}.sorted.bam",
-        bai="{sample}.sorted.bai",
-        ref=ANNOTATION_FOLDER + FULL_FASTA,
-        fai=ANNOTATION_FOLDER + FULL_FASTA + ".fai",
-        # dict="genome.dict",
-        # known="dbsnp.vcf.gz",
-        # known_idx="dbsnp.vcf.gz.tbi",
-        target_intervals="{sample}.intervals",
-    output:
-        bam="{sample}.realigned.bam",
-        bai="{sample}.realigned.bai",
-    log:
-        "logs/gatk3/indelrealigner/{sample}.log",
-    params:
-        extra="--defaultBaseQualities 20 --filter_reads_with_N_cigar",  # optional
-    threads: 16
-    resources:
-        mem_mb=1024,
-    wrapper:
-        "0.2.0/bio/gatk3/indelrealigner"
-
 # Step creating the jarjarbeans
 rule BaseQualityScoreRecalibration:
     conda:
@@ -415,12 +351,6 @@ rule CopyNumberVariation:
     Rscript scripts/plot_cnv.R {output.copycaller} {output.plot}
     """
     
-rule AncestryAnalysis:
-    input: 
-    output: 
-    run: """
-    echo "Performing Ancestry Analisys using EthSEQ"""
-
 rule VariantCalling:
     conda:
         "envs/general.yml"
@@ -457,28 +387,6 @@ rule SomaticVariantCall:
         varscan -Xmx{resources.mem_gb}g somatic {output.control} {output.tumor} --output-snp somatic.pm --output-indel somatic.indel --ouput-vcf 1
         """
 
-# Rule that handles the Alpha Genome run
-rule VariantPrediction:
-    input: 
-        vcf="results/intermediate.vcf" # change name 
-    output: 
-        report=report("results/variant_prediction_report.html", category="Variant Prediction with AlphaGenome"),
-    script:
-        "scripts/variant_prediction.py {input} {output}"
-
-# might incorporate this with the above
-rule IGVPredictionVisualization:
-    input: 
-    output: 
-    script:
-        "script/igv_visualization.py {input} {output}"
-
-def get_annotation_db(wildcard):
-    # this is a function that given the name of the input vcf, return the correct annotation database for snpeff
-    # for example if the input is hg19.vcf it will return hg19kg, if the input is hg38.vcf it will return hg38kg, etc
-    # in addition it should merge the various annotation database with the custom chosen by the user (if chosen)
-    todo()
-
 # for this rule for the annotation and filtering part i was thinking of using a file with the possible query or idk how
 rule VariantAnnotation:
     input:
@@ -493,25 +401,3 @@ rule VariantAnnotation:
      SnpSift -Xmx{resources.mem_gb}g Annotate 
      """
     
-
-# 
-rule PurityPloidy:
-    input: 
-        control="bcf.vcf"
-    output: 
-    run: 
-        """
-        echo "Filtering the control VCF file for biallelic SNPs"
-        bcftools view \
-            -v snps \
-            -m2 -M2 {input.control} > {output.control}
-        echo "Extracting heterozygous SNPs from the biallelic SNPs VCF file"
-        grep -E "(^#|0/1)" \
-            control.BCF.biallelic_snps.vcf > control.het.biallelic_snps.vcf
-        echo "Counting the allelic reads in the control and tumor samples"
-        java -jar ../tools/genome_analysis_TK.jar -T ASEReadCounter -R ../annotations/human_g1k_v37.fasta -o control.csv -I control.sorted.realigned.recalibrated.dedup.bam -sites control.het.biallelic_snps.vcf -U ALLOW_N_CIGAR_READS -minDepth 20 --minMappingQuality 20 --minBaseQuality 20
-        echo "Counting the allelic reads in the tumor sample"
-        java -jar ../tools/genome_analysis_TK.jar -T ASEReadCounter -R ../annotations/human_g1k_v37.fasta -o tumor.csv -I tumor.sorted.realigned.recalibrated.dedup.bam -sites control.het.biallelic_snps.vcf -U ALLOW_N_CIGAR_READS -minDepth 20 --minMappingQuality 20 --minBaseQuality 20
-        echo "Generating the somatic.pm and somatic.indel files without the .vcf extension for TPES"
-        java -jar ../tools/var_scan.v2.3.9.jar somatic control.sorted.realigned.recalibrated.dedup.pileup tumor.sorted.realigned.recalibrated.dedup.pileup --output-snp somatic.pm --output-indel somatic.indel
-        """

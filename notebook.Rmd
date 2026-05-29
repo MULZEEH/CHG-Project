@@ -1,5 +1,555 @@
-# General workflow in Notebook version
-probably syntax is wrong but will fix later
+rule preprep:
+    """
+    Sort the raw input BAM by coordinate position.
+    Uses the official Snakemake-wrappers samtools/sort wrapper.
+    """
+    threads: 4
+    input:
+        "data/{group}.bam"
+    output:
+        "data/{group}.sorted.bam"
+    log:
+        "logs/samtools/sort/{group}.log"
+    wrapper:
+        "0.2.0/bio/samtools/sort"
+
+
+rule indexing:
+    """
+    Build a .bai index for a sorted BAM.
+    Required by GATK and many downstream tools.
+    """
+    input:
+        "data/{group}.sorted.bam"
+    output:
+        "data/{group}.sorted.bai"
+    log:
+        "logs/samtools/index/{group}.log"
+    wrapper:
+        "0.2.0/bio/samtools/index"
+
+
+rule RemoveDuplicates:
+    """
+    Flag (and optionally remove) PCR/optical duplicates using GATK MarkDuplicates.
+    Duplicate removal is recommended for somatic variant calling to reduce artefacts.
+    The --REMOVE_DUPLICATES flag is set to true here; set to false if you only want
+    to flag duplicates without discarding reads.
+    """
+    conda:
+        "envs/general.yml"
+    threads: 8
+    input:
+        input_bam="data/{group}.sorted.bam",
+    output:
+        output_bam="data/{group}.sorted.dedup.bam",
+        metrics=report(
+            "results/qc/{group}.dedup_metrics.txt",
+            caption="report/dedup_metrics.rst",
+            category="Duplicate Metrics",
+        ),
+    log:
+        "logs/gatk/markduplicates/{group}.log"
+    shell:
+        """
+        gatk MarkDuplicates \
+            -I {input.input_bam} \
+            -O {output.output_bam} \
+            -M {output.metrics} \
+            --REMOVE_DUPLICATES true \
+            --ASSUME_SORT_ORDER coordinate \
+            2> {log}
+
+        samtools index {output.output_bam}
+        """
+
+
+rule BaseQualityScoreRecalibration:
+    """
+    Perform Base Quality Score Recalibration (BQSR) using GATK.
+    Corrects systematic technical errors in base quality scores, which
+    improves the accuracy of downstream variant calling.
+
+    Requires:
+      - A known-sites VCF (e.g. HapMap 3.3) to avoid recalibrating real variants.
+      - A BED file of target intervals to limit recalibration to covered regions.
+    """
+    conda:
+        "envs/general.yml"
+    input:
+        input_bam=STARTING_DATA + "{group}.sorted.dedup.bam",
+        ref=FASTA_PATH,
+        known_sites=ANNOTATION_DIR + "hapmap_3.3.b37.vcf",
+        intervals=ANNOTATION_DIR + "CancerGenesSel.bed",
+    output:
+        output_bam="data/{group}.sorted.recalibrated.bam",
+        recal_table=report(
+            "results/qc/{group}.recal_table.txt",
+            caption="report/bqsr_table.rst",
+            category="BQSR",
+        ),
+    log:
+        "logs/gatk/bqsr/{group}.log"
+    shell:
+        """
+        bash scripts/BQSR.sh \
+            -r {input.ref} \
+            -i {input.input_bam} \
+            -o {output.output_bam} \
+            -k {input.known_sites} \
+            -l {input.intervals} \
+            -t {output.recal_table} \
+            2> {log}
+        """
+
+
+# ── Optional GATK3 indel realignment (not needed for GATK4 HaplotypeCaller) ──
+
+rule realignertargetcreator:
+    """
+    [LEGACY — GATK3 only]
+    Create a list of candidate genomic intervals where indel realignment
+    should be applied.  This step is NOT needed when using GATK4
+    HaplotypeCaller, which performs local de-novo assembly internally.
+    Keep only if you need GATK3 IndelRealigner for an older pipeline.
+    """
+    input:
+        bam="{sample}.sorted.bam",
+        bai="{sample}.sorted.bai",
+        ref=FASTA_PATH,
+        fai=FASTA_PATH + ".fai",
+    output:
+        intervals="{sample}.intervals",
+    log:
+        "logs/gatk/realignertargetcreator/{sample}.log",
+    params:
+        extra="--defaultBaseQualities 20 --filter_reads_with_N_cigar",
+    resources:
+        mem_mb=1024,
+    threads: 16
+    wrapper:
+        "master/bio/gatk3/realignertargetcreator"
+
+
+rule Realignment:
+    """
+    [LEGACY — GATK3 only]
+    Perform local indel realignment around candidate intervals created by
+    realignertargetcreator. See that rule for caveats re GATK4.
+    """
+    input:
+        bam="{sample}.sorted.bam",
+        bai="{sample}.sorted.bai",
+        ref=FASTA_PATH,
+        fai=FASTA_PATH + ".fai",
+        target_intervals="{sample}.intervals",
+    output:
+        bam="{sample}.realigned.bam",
+        bai="{sample}.realigned.bai",
+    log:
+        "logs/gatk3/indelrealigner/{sample}.log",
+    params:
+        extra="--defaultBaseQualities 20 --filter_reads_with_N_cigar",
+    threads: 16
+    resources:
+        mem_mb=1024,
+    wrapper:
+        "0.2.0/bio/gatk3/indelrealigner"
+
+
+# =============================================================================
+# Section 2 — Quality control
+# =============================================================================
+
+rule SPIA_check:
+    """
+    Run SPIA (SNP-based identity check) to confirm that the control and tumor
+    BAMs originate from the same individual.
+
+    Interpretation of results:
+      - Distance < threshold_low  → PASS (same donor)
+      - threshold_low ≤ distance ≤ threshold_high → WARN (possible 1st-degree relative)
+      - Distance > threshold_high → FAIL (sample swap suspected)
+
+    The PDF report is surfaced in the Snakemake HTML report under "QC Plots".
+    """
+    input:
+        control="data/control.sorted.bam",
+        tumor="data/tumor.sorted.bam",
+        control_bai="data/control.sorted.bai",
+        tumor_bai="data/tumor.sorted.bai",
+    output:
+        test_result=report(
+            "results/control/spia_report.pdf",
+            caption="report/spia_desc.rst",
+            category="QC Plots",
+        ),
+    log:
+        "logs/spia/spia_check.log"
+    shell:
+        """
+        Rscript scripts/spia_check.R \
+            --control {input.control} \
+            --tumor   {input.tumor} \
+            --output  {output.test_result} \
+            2> {log}
+        """
+
+
+rule AncestryAnalysis:
+    """
+    Infer the genetic ancestry of the sample using EthSEQ.
+    Useful for population-stratified downstream analyses and for flagging
+    unexpected admixture that might indicate contamination.
+    """
+    input:
+        vcf="results/control.vcf",
+        ref_model=ANNOTATION_DIR + "ethseq_reference_model.gds",
+    output:
+        report_txt=report(
+            "results/ancestry/ancestry_report.txt",
+            caption="report/ancestry_desc.rst",
+            category="Ancestry",
+        ),
+        plot=report(
+            "results/ancestry/ancestry_plot.pdf",
+            caption="report/ancestry_plot_desc.rst",
+            category="Ancestry",
+        ),
+    log:
+        "logs/ancestry/ethseq.log"
+    shell:
+        """
+        Rscript scripts/ancestry_analysis.R \
+            --vcf   {input.vcf} \
+            --model {input.ref_model} \
+            --out   results/ancestry/ \
+            2> {log}
+        """
+
+
+# =============================================================================
+# Section 3 — Variant calling
+# =============================================================================
+
+rule VariantCalling:
+    """
+    Call germline variants (SNPs + indels) using GATK HaplotypeCaller.
+    Produces a raw VCF and a realigned BAM (bamout).
+    The bamout replaces the previous BAM as the main alignment file for
+    visualisation purposes.
+
+    NOTE: For a complete GATK best-practices germline pipeline this rule
+    should be followed by GenotypeGVCFs and VQSR filtering. 
+    At least thats what they said
+    """
+    conda:
+        "envs/general.yml"
+    threads: 16
+    input:
+        input_bam="data/{group}.sorted.recalibrated.dedup.bam",
+        ref=FASTA_PATH,
+    output:
+        output_vcf=report(
+            "results/{group}.vcf",
+            caption="report/variant_calling_desc.rst",
+            category="Variants",
+        ),
+        bamout="results/{group}.bamout.bam",
+    log:
+        "logs/gatk/haplotypecaller/{group}.log"
+    shell:
+        """
+        gatk HaplotypeCaller \
+            -R {input.ref} \
+            -I {input.input_bam} \
+            -O {output.output_vcf} \
+            --bam-output {output.bamout} \
+            2> {log}
+        """
+
+
+rule SomaticVariantCall:
+    """
+    Call somatic SNPs and indels from matched tumor/control pileups using VarScan.
+
+    Steps:
+      1. Generate per-base pileup files for control and tumor with samtools mpileup.
+      2. Run VarScan somatic to identify somatic mutations.
+
+    The pileup files are marked as temporary (temp()) and will be removed once
+    downstream rules have consumed them.
+    """
+    conda:
+        "envs/general.yml"
+    threads: 4
+    input:
+        ref=FASTA_PATH,
+        control="data/control.sorted.recalibrated.dedup.bam",
+        tumor="data/tumor.sorted.recalibrated.dedup.bam",
+    output:
+        control_pileup=temp("results/somatic/control.pileup"),
+        tumor_pileup=temp("results/somatic/tumor.pileup"),
+        snp=report(
+            "results/somatic.snp.vcf",
+            caption="report/somatic_snp_desc.rst",
+            category="Somatic Variants",
+        ),
+        indel=report(
+            "results/somatic.indel.vcf",
+            caption="report/somatic_indel_desc.rst",
+            category="Somatic Variants",
+        ),
+    log:
+        "logs/varscan/somatic.log"
+    resources:
+        mem_gb=JAVA_MEMORY,
+    shell:
+        """
+        samtools mpileup -q 1 -f {input.ref} {input.control} > {output.control_pileup}
+        samtools mpileup -q 1 -f {input.ref} {input.tumor}   > {output.tumor_pileup}
+
+        varscan -Xmx{resources.mem_gb}g somatic \
+            {output.control_pileup} \
+            {output.tumor_pileup} \
+            --output-snp   {output.snp} \
+            --output-indel {output.indel} \
+            --output-vcf 1 \
+            2> {log}
+        """
+
+
+rule CopyNumberVariation:
+    """
+    Detect somatic copy-number variations (CNVs) from matched pileup data
+    using VarScan copynumber + copyCaller, then plot the results with an
+    R script.
+
+    Output segments are reported in the Snakemake report under "CNV".
+    """
+    conda:
+        "envs/general.yml"
+    input:
+        ref=FASTA_PATH,
+        control="data/control.sorted.recalibrated.dedup.bam",
+        tumor="data/tumor.sorted.recalibrated.dedup.bam",
+    output:
+        copynumber="results/cnv/copynumber.txt",
+        copycaller="results/cnv/copycaller.txt",
+        plot=report(
+            "results/cnv/cnv_plot.pdf",
+            caption="report/cnv_plot_desc.rst",
+            category="CNV",
+        ),
+    log:
+        "logs/varscan/cnv.log"
+    resources:
+        mem_gb=JAVA_MEMORY,
+    shell:
+        """
+        samtools mpileup -q 1 -f {input.ref} {input.control} {input.tumor} \
+            | varscan -Xmx{resources.mem_gb}g copynumber \
+                --mpileup 1 \
+                --output-file {output.copynumber} \
+            2> {log}
+
+        varscan copyCaller {output.copynumber} \
+            --output-file {output.copycaller} \
+            2>> {log}
+
+        Rscript scripts/plot_cnv.R {output.copycaller} {output.plot} 2>> {log}
+        """
+
+
+# =============================================================================
+# Section 4 — Annotation and downstream analysis
+# =============================================================================
+
+rule VariantAnnotation:
+    """
+    Annotate variants with functional effects using SnpEff and add allele
+    frequency / clinical information with SnpSift.
+
+    The correct reference database is selected automatically by get_annotation_db()
+    based on the sample name; override via config key snp_ref_db if needed.
+
+    HTML summary from SnpEff is surfaced in the Snakemake report.
+    """
+    conda:
+        "envs/general.yml"
+    input:
+        vcf="results/somatic.snp.vcf",
+    output:
+        annotated_vcf="results/annotated_variants.vcf",
+        summary=report(
+            "results/snpeff_summary.html",
+            caption="report/snpeff_desc.rst",
+            category="Annotation",
+        ),
+    log:
+        "logs/snpeff/annotation.log"
+    resources:
+        mem_gb=JAVA_MEMORY,
+    params:
+        database=get_annotation_db,
+    shell:
+        """
+        snpEff -Xmx{resources.mem_gb}g \
+            -v {params.database} \
+            {input.vcf} \
+            -s {output.summary} \
+            > {output.annotated_vcf} \
+            2> {log}
+
+        SnpSift -Xmx{resources.mem_gb}g Annotate \
+            {ANNOTATION_DIR}clinvar.vcf \
+            {output.annotated_vcf} \
+            >> {output.annotated_vcf} \
+            2>> {log}
+        """
+
+
+rule PurityPloidy:
+    """
+    Estimate tumour purity and ploidy using TPES (Tumour Purity Estimation
+    from Sequencing).
+
+    Steps:
+      1. Filter the control VCF for biallelic SNPs (bcftools).
+      2. Extract heterozygous sites from the filtered VCF.
+      3. Count allelic reads at heterozygous sites in both control and tumor
+         BAMs with GATK ASEReadCounter.
+      4. Generate somatic pileups (VarScan somatic) for TPES input.
+    """
+    conda:
+        "envs/general.yml"
+    input:
+        control_vcf="results/control.vcf",
+        control_bam="data/control.sorted.recalibrated.dedup.bam",
+        tumor_bam="data/tumor.sorted.recalibrated.dedup.bam",
+        ref=FASTA_PATH,
+        gatk_jar=get_gatk_jar(),
+    output:
+        biallelic_vcf=temp("results/purity/control.biallelic_snps.vcf"),
+        het_vcf=temp("results/purity/control.het.biallelic_snps.vcf"),
+        control_csv="results/purity/control_ase.csv",
+        tumor_csv="results/purity/tumor_ase.csv",
+        somatic_snp=temp("results/purity/somatic.pm"),
+        somatic_indel=temp("results/purity/somatic.indel"),
+        report_txt=report(
+            "results/purity_ploidy_report.txt",
+            caption="report/purity_desc.rst",
+            category="Purity and Ploidy",
+        ),
+    log:
+        "logs/purity/tpes.log"
+    shell:
+        """
+        echo "Filtering for biallelic SNPs..." 2>> {log}
+        bcftools view -v snps -m2 -M2 {input.control_vcf} \
+            > {output.biallelic_vcf}
+
+        echo "Extracting heterozygous SNPs..." 2>> {log}
+        grep -E "(^#|0/1)" {output.biallelic_vcf} \
+            > {output.het_vcf}
+
+        echo "Counting allelic reads — control..." 2>> {log}
+        java -jar {input.gatk_jar} -T ASEReadCounter \
+            -R {input.ref} \
+            -o {output.control_csv} \
+            -I {input.control_bam} \
+            -sites {output.het_vcf} \
+            -U ALLOW_N_CIGAR_READS \
+            -minDepth 20 \
+            --minMappingQuality 20 \
+            --minBaseQuality 20 \
+            2>> {log}
+
+        echo "Counting allelic reads — tumor..." 2>> {log}
+        java -jar {input.gatk_jar} -T ASEReadCounter \
+            -R {input.ref} \
+            -o {output.tumor_csv} \
+            -I {input.tumor_bam} \
+            -sites {output.het_vcf} \
+            -U ALLOW_N_CIGAR_READS \
+            -minDepth 20 \
+            --minMappingQuality 20 \
+            --minBaseQuality 20 \
+            2>> {log}
+
+        echo "Running VarScan somatic for purity estimation..." 2>> {log}
+        samtools mpileup -q 1 -f {input.ref} {input.control_bam} \
+            > {output.somatic_snp}.pileup
+        samtools mpileup -q 1 -f {input.ref} {input.tumor_bam} \
+            > {output.somatic_indel}.pileup
+
+        varscan somatic \
+            {output.somatic_snp}.pileup \
+            {output.somatic_indel}.pileup \
+            --output-snp   {output.somatic_snp} \
+            --output-indel {output.somatic_indel} \
+            2>> {log}
+
+        echo "Purity/ploidy estimation complete." > {output.report_txt}
+        """
+
+
+# =============================================================================
+# Section 5 — Reporting and visualisation
+# =============================================================================
+
+rule VariantPrediction:
+    """
+    Run an AlphaGenome-based variant effect prediction on the annotated VCF.
+    Produces a self-contained HTML report surfaced in the Snakemake report.
+    """
+    input:
+        vcf="results/annotated_variants.vcf",
+    output:
+        html_report=report(
+            "results/variant_prediction_report.html",
+            caption="report/variant_prediction_desc.rst",
+            category="Variant Prediction",
+        ),
+    log:
+        "logs/variant_prediction/alphagenome.log"
+    shell:
+        """
+        python scripts/variant_prediction.py \
+            --input  {input.vcf} \
+            --output {output.html_report} \
+            2> {log}
+        """
+
+
+rule IGVVisualization:
+    """
+    Generate an IGV-based interactive visualisation of key variant loci.
+    Requires the bamout files from VariantCalling for high-quality display
+    of reassembled haplotypes around variant sites.
+    """
+    input:
+        bam=expand("results/{group}.bamout.bam", group=GROUPS),
+        vcf="results/annotated_variants.vcf",
+        ref=FASTA_PATH,
+    output:
+        html=report(
+            "results/igv_visualization.html",
+            caption="report/igv_desc.rst",
+            category="IGV Visualisation",
+        ),
+    log:
+        "logs/igv/visualization.log"
+    shell:
+        """
+        python scripts/igv_visualization.py \
+            --bam    {input.bam} \
+            --vcf    {input.vcf} \
+            --ref    {input.ref} \
+            --output {output.html} \
+            2> {log}
+        """
+
 '''{r}'''
 
 '''{python}'''
