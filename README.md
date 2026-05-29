@@ -144,7 +144,7 @@ In this it would be interesting to see how each of this event is present in each
 text:
 Spia (Mar)
 EthSEQ (Ricc)
-sigProfiler (Filippo)
+[sigProfilerGit](https://github.com/SigProfilerSuite/SigProfilerAssignment) or [sigProfilerOnline](https://cancer.sanger.ac.uk/signatures/assignment/) (Filippo)
 cBioPortal (PIPUS)
 AlphaGenome (Sara (+Marcol))
 
