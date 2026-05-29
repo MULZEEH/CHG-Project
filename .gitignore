@@ -2,7 +2,7 @@
 data/*
 results/*
 annotations/*
-
+variant_annotations/*
 # tmp folders
 tmp/*
 .tmp/* 
