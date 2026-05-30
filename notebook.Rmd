@@ -550,6 +550,64 @@ rule IGVVisualization:
             2> {log}
         """
 
+rule CreateAllelicFreq:
+    """
+
+    Extract heterozygous variants from normal sample VCF, remove duplicate variants and calculate allelic frequency of each variant from BAM files
+    """
+    conda:
+        "envs/general.yml"
+    input:
+        control_vcf="results/control.vcf",
+        control_bam="data/control.sorted.recalibrated.dedup.bam",
+        tumor_bam="data/tumor.sorted.recalibrated.dedup.bam",
+        ref=FASTA_PATH,
+    output:
+        het_vcf=temp("results/purity/Normal.het.vcf"),
+        clean_vcf="results/purity/Normal.het.clean.vcf",
+        clean_vcf_idx="results/purity/Normal.het.clean.vcf.idx",
+        control_csv="results/purity/Control.csv",
+        tumor_csv="results/purity/Tumor.csv",
+    log:
+        "logs/purity/tpes.log"
+    shell:
+        """
+        echo "Extracting heterozygous variants from Control VCF..." 2> {log}
+        grep -E "(^#|0/1)" {input.control_vcf} > {output.het_vcf} 2>> {log}
+
+        echo "Filtering for biallelic SNPs and removing duplicates..." 2>> {log}
+        bcftools view -v snps -m2 -M2 {output.het_vcf} \
+            | bcftools norm -d all -o {output.clean_vcf} 2>> {log}
+
+        echo "Indexing the cleaned VCF for GATK4..." 2>> {log}
+        gatk IndexFeatureFile -I {output.clean_vcf} 2>> {log}
+
+        echo "Counting allelic reads — Control..." 2>> {log}
+        gatk ASEReadCounter \
+            -R {input.ref} \
+            -I {input.control_bam} \
+            -V {output.clean_vcf} \
+            -O {output.control_csv} \
+            --read-filter MappingQualityReadFilter \
+            -min-depth 20 \
+            --minimum-mapping-quality 20 \
+            --min-base-quality 20 \
+            2>> {log}
+
+        echo "Counting allelic reads — Tumor..." 2>> {log}
+        gatk ASEReadCounter \
+            -R {input.ref} \
+            -I {input.tumor_bam} \
+            -V {output.clean_vcf} \
+            -O {output.tumor_csv} \
+            --read-filter MappingQualityReadFilter \
+            -min-depth 20 \
+            --minimum-mapping-quality 20 \
+            --min-base-quality 20 \
+            2>> {log}
+
+        """
+
 '''{r}'''
 
 '''{python}'''
