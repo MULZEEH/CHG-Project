@@ -163,3 +163,23 @@ THANKS AND ENJOY GUYS :)
 Clinvar found nothing but this:
 
 [BRCA1](https://www.ncbi.nlm.nih.gov/clinvar/variation/54108/?term=54108%5BVariation+ID%5D)
+
+# VCF
+
+In the VCF we cna get informtion about the sample:
+As for the ast column content, it follows the FORMAT field definition (GT:AD:DP:GQ:PL in your case):
+
+GT — genotype (e.g. 0/1 = het, 1/1 = hom alt)
+AD — allele depth (ref reads, alt reads)
+DP — total read depth
+GQ — genotype quality (Phred-scaled confidence)
+PL — phred-scaled likelihoods for each possible genotype (hom-ref, het, hom-alt)
+
+other than defining information encoed in the BAM:
+
+## So for AlphaGenome we could use this:
+UBERON:0000310 — breast (bulk tissue, from GTEx)
+MCF-7 or MCF10A cell lines — common breast cancer/epithelial cell lines present in ENCODE data
+mammary epithelial cell — if you want a primary cell type
+
+[Link that imnot 100% sure but if so we are toplvl](https://histoatlas.com/tcga/BRCA/slide/TCGA-A7-A4SE-01Z-00-DX1.16BC8401-E40E-4A1A-9BD9-12735C9AE3F6.svs/)
